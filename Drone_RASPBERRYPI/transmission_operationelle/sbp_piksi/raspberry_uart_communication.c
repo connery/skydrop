@@ -1,3 +1,5 @@
+#define _XOPEN_SOURCE
+
 #include <sys/shm.h>
 #include <sys/types.h>
 
@@ -10,8 +12,11 @@
 #include "libswiftnav/include/libswiftnav/sbp_messages.h"
 
 #include "piksi_implementation.h"
+#include "../shared_memory_double.h"
 
-#define				SHARED_MEMORY_KEY 00045
+#include "raspberry_uart_communication.h"
+
+#define				SHARED_MEMORY_KEY 11114
 
 sbp_state_t			sbp_state;
 
@@ -36,7 +41,7 @@ void	sbp_gps_time_callback(uint16_t sender_id, uint8_t len, uint8_t msg[], void 
 
 int	init();
 int	show_result();
-int	communication_loop(int uart0_filestream);
+int	communication_loop(int uart0_filestream, struct piksi_data_shared_memory * data, void * shared_memory);
 
 
 void	sbp_pos_llh_callback(uint16_t sender_id, uint8_t len, uint8_t msg[], void *context)
@@ -78,22 +83,86 @@ int	init()
   return (0);
 }
 
-int	write_result_on_shared_memory()
+int	write_result_on_shared_memory(struct piksi_data_shared_memory * data, void * shared_memory)
 {
-  int	shared_memory_segment_id;
+  struct shared_double kp;
+  struct piksi_data_shared_memory kl;
 
-  void		* shared_memory;
-  sbp_pos_llh_t	* data = malloc(sizeof(data));
+  decimal_number_decomposition(pos_llh.lat, &kp); // Decomposition d'un nombre decimal (double) en une structure contenant la part entiere dans un conteneur de type int, la part decimale dans un tableau (char[10])
 
-  if ((shared_memory_segment_id = shmget(SHARED_MEMORY_KEY, sizeof(data), 0666 | IPC_CREAT)) < 0) { /* ERROR EXIT */ }
-  if ((shared_memory = shmat(shared_memory_segment_id, NULL, 0)) == (void*)(-1)) { /* ERROR EXIT */ }
+  kl.lat_sign = kp.sign;
+  kl.lat_whole_part = kp.whole_part;
+  kl.lat_decimal_part[0] = kp.decimal_part[0];
+  kl.lat_decimal_part[1] = kp.decimal_part[1];
+  kl.lat_decimal_part[2] = kp.decimal_part[2];
+  kl.lat_decimal_part[3] = kp.decimal_part[3];
+  kl.lat_decimal_part[4] = kp.decimal_part[4];
+  kl.lat_decimal_part[5] = kp.decimal_part[5];
+  kl.lat_decimal_part[6] = kp.decimal_part[6];
+  kl.lat_decimal_part[7] = kp.decimal_part[7];
+  kl.lat_decimal_part[8] = kp.decimal_part[8];
+  kl.lat_decimal_part[9] = kp.decimal_part[9];  
 
-  data->lat = pos_llh.lat;
-  data->lon = pos_llh.lon;
-  data->height = pos_llh.height;
-  data->n_sats = pos_llh.n_sats;
+  decimal_number_decomposition(pos_llh.lon, &kp); // Decomposition d'un nombre decimal (double) en une structure contenant la part entiere dans un conteneur de type int, la part decimale dans un tableau (char[10])
 
-  memcpy(shared_memory, (void *)data, sizeof(data));
+  kl.lon_sign = kp.sign;
+  kl.lon_whole_part = kp.whole_part;
+  kl.lon_decimal_part[0] = kp.decimal_part[0];
+  kl.lon_decimal_part[1] = kp.decimal_part[1];
+  kl.lon_decimal_part[2] = kp.decimal_part[2];
+  kl.lon_decimal_part[3] = kp.decimal_part[3];
+  kl.lon_decimal_part[4] = kp.decimal_part[4];
+  kl.lon_decimal_part[5] = kp.decimal_part[5];
+  kl.lon_decimal_part[6] = kp.decimal_part[6];
+  kl.lon_decimal_part[7] = kp.decimal_part[7];
+  kl.lon_decimal_part[8] = kp.decimal_part[8];
+  kl.lon_decimal_part[9] = kp.decimal_part[9];
+
+  decimal_number_decomposition(pos_llh.height, &kp);
+
+  kl.height_sign = kp.sign;
+  kl.height_whole_part = kp.whole_part;
+  kl.height_decimal_part[0] = kp.decimal_part[0];
+  kl.height_decimal_part[1] = kp.decimal_part[1];
+  kl.height_decimal_part[2] = kp.decimal_part[2];
+  kl.height_decimal_part[3] = kp.decimal_part[3];
+  kl.height_decimal_part[4] = kp.decimal_part[4];
+  kl.height_decimal_part[5] = kp.decimal_part[5];
+  kl.height_decimal_part[6] = kp.decimal_part[6];
+  kl.height_decimal_part[7] = kp.decimal_part[7];
+  kl.height_decimal_part[8] = kp.decimal_part[8];
+  kl.height_decimal_part[9] = kp.decimal_part[9];
+
+  // INFORMATIONS COMPLEMENTAIRES
+
+  kl.n_sats = pos_llh.n_sats;
+  
+  kl.gps_time_week = (int)gps_time.wn;
+
+  char	buf[10];
+
+  buf[9] = 0;
+
+  sprintf(buf, "%6.2f", ((float)gps_time.tow)/1e3);
+  kl.gps_time_s[0] = buf[0];
+  kl.gps_time_s[1] = buf[1];
+  kl.gps_time_s[2] = buf[2];
+  kl.gps_time_s[3] = buf[3];
+  kl.gps_time_s[4] = buf[4];
+  kl.gps_time_s[5] = buf[5];
+  kl.gps_time_s[6] = buf[6];
+  kl.gps_time_s[7] = buf[7];
+  kl.gps_time_s[8] = buf[8];
+  kl.gps_time_s[9] = 0;
+
+  kl.vel_north = (int)baseline_ned.n;
+  kl.vel_east = (int)baseline_ned.e;
+  kl.vel_down = (int)baseline_ned.d;
+
+
+  memcpy(shared_memory, (void *)&kl, sizeof(kl));
+
+  // printf("Ecriture sur la memoire partagee\n");
 
   // shmdt(shared_memory); // DESTRUCTION DE LA MEMOIRE PARTAGEE
 
@@ -156,14 +225,14 @@ int	show_result()
   str_i += sprintf(str + str_i, "\tVDOP\t\t: %7s\n", rj);
   str_i += sprintf(str + str_i, "\n");
 
-  usleep(2000);
+  // usleep(2000);
 
   printf(str);
 
   return (0);
 }
 
-int	communication_loop(int uart0_filestream)
+int	communication_loop(int uart0_filestream, struct piksi_data_shared_memory * data, void * shared_memory)
 {
 	int rx_length = 0;
 
@@ -186,11 +255,12 @@ int	communication_loop(int uart0_filestream)
 	{     
 	  s8 ret = sbp_process(&sbp_state, &fifo_read);
 
-	  show_result();
+	  // show_result();
+	  write_result_on_shared_memory(data, shared_memory);
 	}
     }
 
-  communication_loop(uart0_filestream);
+  communication_loop(uart0_filestream, data, shared_memory);
 
   return (0);
 }
@@ -220,7 +290,23 @@ int	main(int argc, char ** argv)
   tcsetattr(uart0_filestream, TCSANOW, &options);
 
   init();
-  communication_loop(uart0_filestream);
+
+  int	shared_memory_segment_id;
+
+  void		* shared_memory;
+  //sbp_pos_llh_t	* data = malloc(sizeof(data));
+
+  ////
+
+  struct piksi_data_shared_memory * data = malloc(sizeof(data));
+
+  ////
+
+  if ((shared_memory_segment_id = shmget(SHARED_MEMORY_KEY, sizeof(data), 0666 | IPC_CREAT)) < 0) {write(2, "p_shmget_error", 14); exit(-1); }
+  if ((shared_memory = shmat(shared_memory_segment_id, NULL, 0)) == (void*)(-1)) { write(2, "shmat_error", 11); exit(-1); }
+
+
+  communication_loop(uart0_filestream, data, shared_memory);
 
   close(uart0_filestream);
 

@@ -7,7 +7,6 @@ import time
 import sys
 import os
 
-print("Connexion")
 port = Serial('/dev/ttyACM0', 115200)
 print(port.name)
 
@@ -15,39 +14,45 @@ if (port.isOpen() == 0):
 	port.open()
 
 if (port.isOpen()):
-	print("Port ouvert")
+#	print("Port ouvert")
 	time.sleep(2)
-	print("Debut de communication")
+	
 	port.write("!")
 	
-	while(port.inWaiting() == 0):
-		time.sleep(0.5)
-
+#	while(port.inWaiting() == 0):
+#		time.sleep(0.5)
 
 	
 
 	pid = os.fork()
 
+
+	fd_read = os.fdopen((int)(sys.argv[1]), "r")
+	# (PIPE UNIDIRECTIONNEL SERVEUR DRONE > COMMUNICATION.PY : LECTURE ) 
+
+	fd_write = os.fdopen((int)(sys.argv[2]), "w")
+	# (PIPE UNIDIRECTIONNEL SERVEUR DRONE < COMMUNICATION.PY : ECRITURE ) 
+
 	if pid > 0:
 		# enfant
-		
+				
 		while(1):
-			sys.stdout.write(port.read())
+			
+			if (port.inWaiting() != 0):
+			
+				buf_ = port.read()
+				sys.stdout.write(buf_)
+			
 
 	else:
 		#parent
 
 		while(1):
-			buf = sys.stdin.read(2)
-#			sys.stdout.write(buf)
+			
+			buf = fd_read.read(1)
 			port.write(buf)
-#			port.write("X#")
-	
 
-
-
-			
-			
+#			port.write("X#")			
 
 	#port.write("s")
 
