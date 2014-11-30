@@ -25,18 +25,6 @@ struct piksi_data_shared_memory
   int                   height_sign;
   int                   height_whole_part;
   char                  height_decimal_part[10];
-
-  // Nombre de staellites connectes
-  int			n_sats;
-
-  // GPS Time
-  int			gps_time_week;
-  char			gps_time_s[10];
-
-  // Vitesse
-  int			vel_north;
-  int			vel_east;
-  int			vel_down;
 };
 
 #endif

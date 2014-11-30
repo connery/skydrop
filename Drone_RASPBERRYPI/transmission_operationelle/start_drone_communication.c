@@ -17,8 +17,6 @@
 #include <unistd.h>
 #include <string.h>
 
-#include "start_drone_communication.h"
-
 #include "linked_lists_lib/my_list.h"
 #include "sbp_piksi/libswiftnav/include/libswiftnav/sbp_messages.h" // DEFINE STRUCTURE USED FOR SHARED MEMORY
 
@@ -98,7 +96,7 @@ int	client_drone_process(int * file_descriptor_tab)
   return (EXIT_SUCCESS);
 }
 
-int	read_global_positioning_system_data(void * shared_memory, struct piksi_data_shared_memory * k, struct shared_double * p, struct global_positioning_data ** global_positioning;)
+int	read_global_positioning_system_data(void * shared_memory, struct piksi_data_shared_memory * k, struct shared_double * p, double * drone_latitude, double * drone_longitude, double * drone_height)
 {
   k = ((struct piksi_data_shared_memory *)shared_memory);
 
@@ -116,7 +114,7 @@ int	read_global_positioning_system_data(void * shared_memory, struct piksi_data_
   p->decimal_part[8] = k->lat_decimal_part[8];
   p->decimal_part[9] = k->lat_decimal_part[9];
       
-  *(global_positioning->drone_latitude) = decimal_number_recomposition(0, p);
+  *drone_latitude = decimal_number_recomposition(0, p);
 
   p->sign = k->lon_sign;
   p->whole_part = k->lon_whole_part;
@@ -132,7 +130,7 @@ int	read_global_positioning_system_data(void * shared_memory, struct piksi_data_
   p->decimal_part[8] = k->lon_decimal_part[8];
   p->decimal_part[9] = k->lon_decimal_part[9];
       
-  *(global_positioning->drone_longitude) = decimal_number_recomposition(0, p);
+  *drone_longitude = decimal_number_recomposition(0, p);
 
   p->sign = k->height_sign;
   p->whole_part = k->height_whole_part;
@@ -148,27 +146,7 @@ int	read_global_positioning_system_data(void * shared_memory, struct piksi_data_
   p->decimal_part[8] = k->height_decimal_part[8];
   p->decimal_part[9] = k->height_decimal_part[9];
       
-  *(global_positioning->drone_height) = decimal_number_recomposition(0, p);
-
-  *(global_positioning->drone_n_sats) = k->n_sats;
-
-  *(global_positioning->drone_vel_north) = k->vel_north;
-  *(global_positioning->drone_vel_east) = k->vel_east;
-  *(global_positioning->drone_vel_down) = k->vel_down;
-
-  int	gps_time_week = k->gps_time_week;
-
-  char	gps_time_s[10];
-  gps_time_s[0] = k->gps_time_s[0];
-  gps_time_s[1] = k->gps_time_s[1];
-  gps_time_s[2] = k->gps_time_s[2];
-  gps_time_s[3] = k->gps_time_s[3];
-  gps_time_s[4] = k->gps_time_s[4];
-  gps_time_s[5] = k->gps_time_s[5];
-  gps_time_s[6] = k->gps_time_s[6];
-  gps_time_s[7] = k->gps_time_s[7];
-  gps_time_s[8] = k->gps_time_s[8];
-  gps_time_s[9] = 0;
+  *drone_height = decimal_number_recomposition(0, p);
 
   return (0);
 }
@@ -241,9 +219,14 @@ int	serveur_drone_process(int * file_descriptor_tab)
   if ((k = malloc(sizeof(k))) == NULL) { write(2, "malloc_error", 12); }
   if ((p = malloc(sizeof(p))) == NULL) { write(2, "malloc_error", 12); }
   
-  struct global_positioning_data * global_positioning;
+  /* while (1) */
+  /*   { */
+  /*     read_global_positioning_system_data(shared_memory, k, p, &drone_latitude, &drone_longitude, &drone_height); */
 
-  if ((global_positioning = malloc(sizeof(global_positioning))) == NULL) { write(2, "malloc_error", 12); }
+  /*     printf("Latitude : %.10f \nLongitude : %.10f\nHauteur : %.10f\n\n", drone_latitude, drone_longitude, drone_height); */
+  /*     usleep(500); */
+  /*   } */
+
 
   ///////////////////////////////////////////////////////////////////////////////////
 
@@ -254,22 +237,18 @@ int	serveur_drone_process(int * file_descriptor_tab)
 
   FD_ZERO(&rdfs);
     
-  FD_SET(0, &rdfs); // Add standard input
-
-  char	standard_input_buffer[1024];
-  int	nb;
-
   FD_SET(file_descriptor_tab[2], &rdfs); // Add exit pipe arduino file_descriptor_tab[2]
   FD_SET(file_descriptor_tab[5], &rdfs); // Add exit pipe client file_descriptor_tab[5]
 
   
   write(file_descriptor_tab[1], "X#", 2);
-  //write(file_descriptor_tab[1], "z", 1);
 
   while (1)
     {
+      write(file_descriptor_tab[1], "X#", 2);
+
       errno = 0;
-      if (select(max_fd, &rdfs, NULL, NULL, /*&time_out*/ NULL) == -1)
+      if (select(max_fd, &rdfs, NULL, NULL, &time_out) == -1)
 	{ 
 	  write(2, "select_error", 12);
 	  if (errno != 0)
@@ -283,28 +262,15 @@ int	serveur_drone_process(int * file_descriptor_tab)
       time_out.tv_usec = 1000000; // Passage select toutes les 1 seconde si pas d'activite sur les fd
 
 
-      ////////////////////////// POSITIONING DATA ///////////////////////////////////////
 
-      read_global_positioning_system_data(shared_memory, k, p, &global_positioning);
+      read_global_positioning_system_data(shared_memory, k, p, &drone_latitude, &drone_longitude, &drone_height);
 
-      printf("Latitude : %.10f \nLongitude : %.10f\nHauteur : %.10f \nSatellites : %d \nVitesse (North) %6d \nVitesse (East) %6d \nVitesse (Down) %6d \n\n", global_positioning->drone_latitude, global_positioning->drone_longitude, global_positioning->drone_height, global_positioning->drone_n_sats, global_positioning->drone_vel_north, global_positioning->drone_vel_east, global_positioning->drone_vel_down);
+      printf("Latitude : %.10f \nLongitude : %.10f\nHauteur : %.10f\n\n", drone_latitude, drone_longitude, drone_height);
+    
 
-      ////////////////////////// POSITIONING DATA ///////////////////////////////////////
+      
 
-
-      if (FD_ISSET(0, &rdfs)) // Read on standard input
-	{
-	  if ((nb = read(0, (void *)(standard_input_buffer), 1024)) < 0) { write(2, "read_error", 10); }
-	  
-	  standard_input_buffer[nb] = 0;
-	  
-	  printf("Interpretation de l'instruction suivante : %s\n", standard_input_buffer);
-	  
-	  if (write(file_descriptor_tab[1], (void *)(standard_input_buffer), (size_t)(nb)) < 0) { write(2, "write error", 11); }
-
-	}
-
-      else if (FD_ISSET(file_descriptor_tab[2], &rdfs)) // Read on exit pipe arduino file_descriptor_tab[2]
+      if (FD_ISSET(file_descriptor_tab[2], &rdfs)) // Read on exit pipe arduino file_descriptor_tab[2]
 	{
 	  printf("Read on exit pipe arduino\n");
 

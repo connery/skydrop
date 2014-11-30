@@ -49,7 +49,7 @@ if (port.isOpen()):
 
 		while(1):
 			
-			buf = fd_read.read(1)
+			buf = fd_read.read(2)
 			port.write(buf)
 
 #			port.write("X#")			
