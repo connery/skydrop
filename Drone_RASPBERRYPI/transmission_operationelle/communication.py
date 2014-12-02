@@ -18,39 +18,39 @@ if (port.isOpen()):
 	time.sleep(2)
 	
 	port.write("!")
+#	port.write("X#");
 	
 #	while(port.inWaiting() == 0):
 #		time.sleep(0.5)
 
 	
 
-	pid = os.fork()
+#	pid = os.fork()
 
 
 	fd_read = os.fdopen((int)(sys.argv[1]), "r")
 	# (PIPE UNIDIRECTIONNEL SERVEUR DRONE > COMMUNICATION.PY : LECTURE ) 
 
-	fd_write = os.fdopen((int)(sys.argv[2]), "w")
+#	fd_write = os.fdopen((int)(sys.argv[2]), "w")
 	# (PIPE UNIDIRECTIONNEL SERVEUR DRONE < COMMUNICATION.PY : ECRITURE ) 
 
-	if pid > 0:
+#	if pid > 0:
 		# enfant
 				
-		while(1):
+#		while(1):
 			
-			if (port.inWaiting() != 0):
+#			if (port.inWaiting() != 0):
 			
-				buf_ = port.read()
-				sys.stdout.write(buf_)
+#				buf_ = port.read()
+#				sys.stdout.write(buf_)
 			
 
-	else:
+#	else:
 		#parent
 
-		while(1):
-			
-			buf = fd_read.read(2)
-			port.write(buf)
+	while(1):	
+		buf = fd_read.read(2)
+		port.write(buf)
 
 #			port.write("X#")			
 

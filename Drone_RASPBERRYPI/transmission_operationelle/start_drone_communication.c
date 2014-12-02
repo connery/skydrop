@@ -151,166 +151,203 @@ int	read_global_positioning_system_data(void * shared_memory, struct piksi_data_
   return (0);
 }
 
-int	serveur_drone_process(int * file_descriptor_tab)
+
+int     arduino_output(int * file_descriptor_tab, t_mylist ** pointer)
 {
-  /* close_file_descriptor(file_descriptor_tab, file_descriptor_tab[0]); // Fermeture du fd */
+  // (1) lecture des instructions recues depuis la carte arduino (parseur de donnees)
+  // (2) interpretation / enregistrement des donnees
+  // (3) reponse si necessaire : write(file_descriptor_tab[1], '', 1);
 
-  /* close_file_descriptor(file_descriptor_tab, file_descriptor_tab[3]); // Fermeture du fd */
+  char          buf;
 
-  /* close_file_descriptor(file_descriptor_tab, file_descriptor_tab[4]); // Fermeture du fd */
+  printf("Read on exit pipe arduino\n");
 
-  /* close_file_descriptor(file_descriptor_tab, file_descriptor_tab[7]); // Fermeture du fd */
+  // RECEPTION
 
-  // definition des variables specifiques a la gestion de memoire partagee
+  sleep(1);
 
-  int   shared_memory_segment_id;
-  void          * shared_memory;
-  struct piksi_data_shared_memory * data;
-
-
-  if ((data = malloc(sizeof(data))) == NULL) { write(2, "malloc_error", 12); }
-
-  double	drone_latitude;
-  double	drone_longitude;
-  double	drone_height;
-
-  while ((shared_memory_segment_id = shmget(SHARED_MEMORY_KEY, sizeof(data), 0444)) < 0)
+  while (read(file_descriptor_tab[2], &buf, 1) > 0)
     {
-      write(2, "SHMGET ERROR : LA CLEF MEMOIRE PARTAGEE NE CORRESPOND A AUCUNE ZONE MEMOIRE OUVERTE", strlen("SHMGET ERROR : LA CLEF MEMOIRE PARTAGEE NE CORRESPOND A AUCUNE ZONE MEMOIRE OUVERTE"));
+      // Gestion de la boucle d'inscructions // NON UTILISE POUR L'INSTANT
+
+      (*pointer)->c = buf;
+      (*pointer) = (*pointer)->next;
+
+      write(0, &buf, 1);
+
+
+    }
+  // REPONSE
+
+  fd_set writefds;
+
+
+  FD_ZERO(&writefds);
+  FD_SET(file_descriptor_tab[1], &writefds); // Add input pipe arduino file_descriptor_tab[1]
+
+
+
+  if (select(file_descriptor_tab[1] + 1, NULL, &writefds, NULL, NULL) == -1) { if (errno != 0) { (void)fprintf(stderr, "Select error, %s\n", strerror(errno)); } exit(1); }
+
+  if (FD_ISSET(file_descriptor_tab[1], &writefds))
+    {
+      printf("|||||||||||||||||||||||||||||||||||||||||Ecriture vers arduino\n");
+      write(file_descriptor_tab[1], "X#", 2);
+    }
+  else
+    {
+      printf("|||||||||||||||||||||||||||||||||||||||||| Pas possible d'ecrire sur le fd ||||||||||||||||||||||||||||||||||||||||||||||||||\n");
     }
 
-  if ((shared_memory = shmat(shared_memory_segment_id, NULL, 0)) == (void*)(-1)) { write(2, "shmat_error", 11); exit(EXIT_FAILURE); }
+  return (0);
+}
 
-  // shmdt(shared_memory); // DESTRUCTION DE LA MEMOIRE PARTAGEE
 
 
-  // creation de la boucle de lecture
+int     client_output(int * file_descriptor_tab, t_mylist ** pointer)
+{
+  char          buf;
 
-  t_mylist      * pointer;
-  int		i;
-  char		buf;
+  printf("Read on exit pipe client\n");
+
+  while (read(file_descriptor_tab[5], &buf, 1) > 0)
+    {
+      write(file_descriptor_tab[1], &buf, 1); // transmission des donnees recues depuis le client vers la carte arduino
+
+      /* write(STDOUT_FILENO, &buf, 1); */
+    }
+
+  return (0);
+}
+
+t_mylist *      create_loop_instruction()
+{
+  t_mylist *    pointer;
+  t_mylist *    begin;
+
+  int           i;
 
   for (pointer = my_put_in_list(0, ' '), i = 0; i < 20; i++)
     {
       pointer = my_put_in_list(pointer, ' ');
     }
-  
-  t_mylist        * begin;
+
   for (begin = pointer; begin->next; begin = begin->next);
 
   begin->next = pointer;
   pointer->prev = begin;
 
-  fd_set rdfs;
-  int max_fd;
-	    
-  if (file_descriptor_tab[2] < file_descriptor_tab[5])
-    max_fd = file_descriptor_tab[5] + 1;
-  else
-    max_fd = file_descriptor_tab[2] + 1;
+
+  return (begin);
+}
 
 
+int     loop_process(void * shared_memory, double drone_latitude, double drone_longitude, double drone_height, t_mylist * arduino_instruction_list, t_mylist * client_instruction_list, fd_set readfds, fd_set writefds, int max_fd, struct piksi_data_shared_memory * k, struct shared_double * p, struct timeval time_out, int * file_descriptor_tab)
+{
+  errno = 0;
 
-  ////////////////////////// LECTURE GPS DATA ///////////////////////////////////////
-  
-  struct piksi_data_shared_memory * k;
-  struct shared_double * p;
-  
-  if ((k = malloc(sizeof(k))) == NULL) { write(2, "malloc_error", 12); }
-  if ((p = malloc(sizeof(p))) == NULL) { write(2, "malloc_error", 12); }
-  
-  /* while (1) */
-  /*   { */
-  /*     read_global_positioning_system_data(shared_memory, k, p, &drone_latitude, &drone_longitude, &drone_height); */
+  FD_ZERO(&readfds);
 
-  /*     printf("Latitude : %.10f \nLongitude : %.10f\nHauteur : %.10f\n\n", drone_latitude, drone_longitude, drone_height); */
-  /*     usleep(500); */
-  /*   } */
+  FD_SET(file_descriptor_tab[2], &readfds); // Add exit pipe arduino file_descriptor_tab[2]
 
+  FD_SET(file_descriptor_tab[5], &readfds); // Add exit pipe client file_descriptor_tab[5]
 
-  ///////////////////////////////////////////////////////////////////////////////////
-
-  struct timeval time_out;
   time_out.tv_usec = 1000000; // Passage select toutes les 1 seconde si pas d'activite sur les fd
 
 
 
-  FD_ZERO(&rdfs);
-    
-  FD_SET(file_descriptor_tab[2], &rdfs); // Add exit pipe arduino file_descriptor_tab[2]
-  FD_SET(file_descriptor_tab[5], &rdfs); // Add exit pipe client file_descriptor_tab[5]
+  if (file_descriptor_tab[2] < file_descriptor_tab[5]) { max_fd = file_descriptor_tab[5] + 1; } else { max_fd = file_descriptor_tab[2] + 1; } // Preparation a l'utilisation de select()
 
-  
-  write(file_descriptor_tab[1], "X#", 2);
+  if (select(max_fd, &readfds, NULL, NULL, /*&time_out*/ NULL) == -1) { if (errno != 0) { (void)fprintf(stderr, "Select error, %s\n", strerror(errno)); } exit(1); }
 
-  while (1)
-    {
-      write(file_descriptor_tab[1], "X#", 2);
+ 
 
-      errno = 0;
-      if (select(max_fd, &rdfs, NULL, NULL, &time_out) == -1)
-	{ 
-	  write(2, "select_error", 12);
-	  if (errno != 0)
-	    {
-	      (void)fprintf(stderr, "Select error, %s\n", strerror(errno));
-	    }
-	
-	  exit(1);
-	}
+  read_global_positioning_system_data(shared_memory, k, p, &drone_latitude, &drone_longitude, &drone_height);
 
-      time_out.tv_usec = 1000000; // Passage select toutes les 1 seconde si pas d'activite sur les fd
+  printf("Latitude : %.10f \nLongitude : %.10f\nHauteur : %.10f\n\n", drone_latitude, drone_longitude, drone_height);
 
 
 
-      read_global_positioning_system_data(shared_memory, k, p, &drone_latitude, &drone_longitude, &drone_height);
+  if (FD_ISSET(file_descriptor_tab[2], &readfds)) { arduino_output(file_descriptor_tab, &arduino_instruction_list); }
+  else if (FD_ISSET(file_descriptor_tab[5], &readfds)) { client_output(file_descriptor_tab, &client_instruction_list); }
 
-      printf("Latitude : %.10f \nLongitude : %.10f\nHauteur : %.10f\n\n", drone_latitude, drone_longitude, drone_height);
-    
+  loop_process(shared_memory, drone_latitude, drone_longitude, drone_height, arduino_instruction_list, client_instruction_list, readfds, writefds, max_fd, k, p, time_out, file_descriptor_tab);
 
-      
-
-      if (FD_ISSET(file_descriptor_tab[2], &rdfs)) // Read on exit pipe arduino file_descriptor_tab[2]
-	{
-	  printf("Read on exit pipe arduino\n");
-
-	  while (read(file_descriptor_tab[2], &buf, 1) > 0)
-	    {
-	      
-	      pointer->c = buf;
-	      pointer = pointer->next;
-
-	      // (1) lecture des instructions recues depuis la carte arduino (parseur de donnees)
-	      // (2) interpretation / enregistrement des donnees
-	      // (3) reponse si necessaire : write(file_descriptor_tab[1], '', 1);
-	      	      
-	      write(0, &buf, 1);
-	      
-	      // DRONE GEODETIC POSITION
-	      
-	      // SEND DRONE GEODETIC POSITION TO ARDUINO
-	      
-	      // write(file_descriptor_tab[1], drone_latitude, sizeof(drone_latitude));
-	      // write(file_descriptor_tab[1], drone_longitude, sizeof(drone_longitude));
-	      
-	      
-	      // Exemple : write(file_descriptor_tab[1], "X#", 2);
-	    }
-	}
-      
-      else if (FD_ISSET(file_descriptor_tab[5], &rdfs)) // Read on exit pipe client file_descriptor_tab[5]
-	{
-	  printf("Read on exit pipe client\n");
-
-	  while (read(file_descriptor_tab[5], &buf, 1) > 0)
-	    {
-	      write(file_descriptor_tab[1], &buf, 1); // transmission des donnees recues depuis le client vers la carte arduino
-	      
-	      write(STDOUT_FILENO, &buf, 1);
-	    }
-	}
-    }
   return (0);
+}
+
+
+int     serveur_drone_process(int * file_descriptor_tab)
+  {
+    int           shared_memory_segment_id;
+    void *        shared_memory;
+
+    struct piksi_data_shared_memory * data;
+
+    if ((data = malloc(sizeof(data))) == NULL) { write(2, "malloc_error", 12); }
+
+    double        drone_latitude;
+    double        drone_longitude;
+    double        drone_height;
+
+    while ((shared_memory_segment_id = shmget(SHARED_MEMORY_KEY, sizeof(data), 0444)) < 0)
+      {
+	write(2, "SHMGET ERROR : LA CLEF MEMOIRE PARTAGEE NE CORRESPOND A AUCUNE ZONE MEMOIRE OUVERTE \n", strlen("SHMGET ERROR : LA CLEF MEMOIRE PARTAGEE NE CORRESPOND A AUCUNE ZONE MEMOIRE OUVERTE \n"));
+      }
+
+    if ((shared_memory = shmat(shared_memory_segment_id, NULL, 0)) == (void*)(-1)) { write(2, "shmat_error", 11); exit(EXIT_FAILURE); }
+
+    // shmdt(shared_memory); // DESTRUCTION DE LA MEMOIRE PARTAGEE
+
+
+    t_mylist *    arduino_instruction_list = create_loop_instruction(); // creation de la boucle de lecture                                   
+    t_mylist *    client_instruction_list = create_loop_instruction(); // creation de la boucle de lecture                                                                              
+
+
+    fd_set        readfds, writefds;
+    int           max_fd;
+
+    struct piksi_data_shared_memory *     k; // Memoire partagee
+    struct shared_double *                p; // Memoire paratgee                                                                                                                                                            
+
+    if ((k = malloc(sizeof(k))) == NULL) { write(2, "malloc_error", 12); }
+    if ((p = malloc(sizeof(p))) == NULL) { write(2, "malloc_error", 12); }
+
+
+    struct timeval                        time_out;
+
+    time_out.tv_usec = 0;
+
+
+    int   filestream = -1, processus_id;
+
+    struct termios options;
+
+    filestream = open("/dev/ttyACM0", O_RDWR | O_NOCTTY);
+
+    if (filestream == -1)
+      {
+        write(2, "open_error\n", 11);
+        return (-1);
+      }
+
+    tcgetattr(filestream, &options);
+
+    options.c_cflag = B115200 | PARENB | CSTOPB | CSIZE | CS8;
+    options.c_lflag = ICANON;
+
+    tcsetattr(filestream, TCSANOW, &options);
+
+
+    file_descriptor_tab[2] = filestream;
+
+    sleep(3);
+
+    write(file_descriptor_tab[1], "X#", 2); // TEST #01
+
+    loop_process(shared_memory, drone_latitude, drone_longitude, drone_height, arduino_instruction_list, client_instruction_list, readfds, writefds, max_fd, k, p, time_out, file_descriptor_tab);
+
+    return (0);
 }
 
 int	python_communication_serial_process(int * file_descriptor_tab)
@@ -339,6 +376,8 @@ int	python_communication_serial_process(int * file_descriptor_tab)
   sprintf(string_nb, "%d", file_descriptor_tab[3]);
   strcat(communication_command_line, string_nb);
  
+  sleep(2);
+
   execl("/bin/sh", "sh", "-c", communication_command_line);
 
   return (EXIT_SUCCESS);
