@@ -133,6 +133,25 @@ int	write_result_on_shared_memory(struct piksi_data_shared_memory * data, void *
   kl.height_decimal_part[8] = kp.decimal_part[8];
   kl.height_decimal_part[9] = kp.decimal_part[9];
 
+  decimal_number_decomposition(gps_time.tow, &kp);
+
+  kl.time_sign = kp.sign;
+  kl.time_whole_part = kp.whole_part;
+  kl.time_decimal_part[0] = kp.decimal_part[0];
+  kl.time_decimal_part[1] = kp.decimal_part[1];
+  kl.time_decimal_part[2] = kp.decimal_part[2];
+  kl.time_decimal_part[3] = kp.decimal_part[3];
+  kl.time_decimal_part[4] = kp.decimal_part[4];
+  kl.time_decimal_part[5] = kp.decimal_part[5];
+  kl.time_decimal_part[6] = kp.decimal_part[6];
+  kl.time_decimal_part[7] = kp.decimal_part[7];
+  kl.time_decimal_part[8] = kp.decimal_part[8];
+  kl.time_decimal_part[9] = kp.decimal_part[9];
+
+
+  kl.n_sats = pos_llh.n_sats;
+
+
   memcpy(shared_memory, (void *)&kl, sizeof(kl));
 
   // printf("Ecriture sur la memoire partagee\n");

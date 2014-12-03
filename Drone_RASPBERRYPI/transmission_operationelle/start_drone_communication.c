@@ -27,6 +27,19 @@
 
 #define		SHARED_MEMORY_KEY 11114
 
+int		GLOBAL_ITERATION = 0;
+
+struct		data_navigation_container
+{ 
+  double	drone_latitude;
+  double	drone_longitude;
+  double	drone_height;
+  double	drone_time;
+
+  int		drone_n_sats;
+};
+
+
 int *	pipe_tab_initialisation(int * file_descriptor_tab);
 
   // file_descriptor_tab[0] : SORTIE DE PIPE (DISPONIBLE EN LECTURE)
@@ -47,8 +60,6 @@ int *	pipe_tab_initialisation(int * file_descriptor_tab);
 
 int *	pipe_tab_initialisation(int * file_descriptor_tab)
 {
-  int pipefd[2];
-
   if (pipe(&(file_descriptor_tab[0])) == -1) { exit(EXIT_FAILURE); }
   if (pipe(&(file_descriptor_tab[2])) == -1) { exit(EXIT_FAILURE); }
   if (pipe(&(file_descriptor_tab[4])) == -1) { exit(EXIT_FAILURE); }
@@ -81,22 +92,12 @@ int	close_file_descriptor(int * file_descriptor_tab, int file_descriptor)
 
 int	client_drone_process(int * file_descriptor_tab)
 {
-  /* close_file_descriptor(file_descriptor_tab, file_descriptor_tab[0]); // Fermeture du fd */
-  /* close_file_descriptor(file_descriptor_tab, file_descriptor_tab[1]); // Fermeture du fd */
-
-  /* close_file_descriptor(file_descriptor_tab, file_descriptor_tab[2]); // Fermeture du fd */
-  /* close_file_descriptor(file_descriptor_tab, file_descriptor_tab[3]); // Fermeture du fd */
-
-  /* close_file_descriptor(file_descriptor_tab, file_descriptor_tab[5]); // Fermeture du fd */
-
-  /* close_file_descriptor(file_descriptor_tab, file_descriptor_tab[6]); // Fermeture du fd */
-
   // execl("/bin/sh", "client_drone", "127.0.0.1", "client_drone#01", file_descriptor_tab[4]); // parametre : file_descriptor_tab[4] 
 
   return (EXIT_SUCCESS);
 }
 
-int	read_global_positioning_system_data(void * shared_memory, struct piksi_data_shared_memory * k, struct shared_double * p, double * drone_latitude, double * drone_longitude, double * drone_height)
+int	read_global_positioning_system_data(void * shared_memory, struct piksi_data_shared_memory * k, struct shared_double * p, struct data_navigation_container * data_navigation)
 {
   k = ((struct piksi_data_shared_memory *)shared_memory);
 
@@ -114,7 +115,9 @@ int	read_global_positioning_system_data(void * shared_memory, struct piksi_data_
   p->decimal_part[8] = k->lat_decimal_part[8];
   p->decimal_part[9] = k->lat_decimal_part[9];
       
-  *drone_latitude = decimal_number_recomposition(0, p);
+  data_navigation->drone_latitude = decimal_number_recomposition(0, p);
+
+  
 
   p->sign = k->lon_sign;
   p->whole_part = k->lon_whole_part;
@@ -130,7 +133,8 @@ int	read_global_positioning_system_data(void * shared_memory, struct piksi_data_
   p->decimal_part[8] = k->lon_decimal_part[8];
   p->decimal_part[9] = k->lon_decimal_part[9];
       
-  *drone_longitude = decimal_number_recomposition(0, p);
+  data_navigation->drone_longitude = decimal_number_recomposition(0, p);
+  
 
   p->sign = k->height_sign;
   p->whole_part = k->height_whole_part;
@@ -146,13 +150,40 @@ int	read_global_positioning_system_data(void * shared_memory, struct piksi_data_
   p->decimal_part[8] = k->height_decimal_part[8];
   p->decimal_part[9] = k->height_decimal_part[9];
       
-  *drone_height = decimal_number_recomposition(0, p);
+  data_navigation->drone_height = decimal_number_recomposition(0, p);
+
+  
+  
+  p->sign = k->time_sign;
+  p->whole_part = k->time_whole_part;
+
+  p->decimal_part[0] = k->time_decimal_part[0];
+  p->decimal_part[1] = k->time_decimal_part[1];
+  p->decimal_part[2] = k->time_decimal_part[2];
+  p->decimal_part[3] = k->time_decimal_part[3];
+  p->decimal_part[4] = k->time_decimal_part[4];
+  p->decimal_part[5] = k->time_decimal_part[5];
+  p->decimal_part[6] = k->time_decimal_part[6];
+  p->decimal_part[7] = k->time_decimal_part[7];
+  p->decimal_part[8] = k->time_decimal_part[8];
+  p->decimal_part[9] = k->time_decimal_part[9];
+      
+  data_navigation->drone_time = decimal_number_recomposition(0, p);
+
+  data_navigation->drone_n_sats = k->n_sats;
+
+
+
+  printf("--- DONNEES DE REFERENCE ---\n");
+
+  printf("Latitude : %.10f\nLongitude : %.10f\nHauteur : %.10f\nTime : %.10f\nSatellites : %d\n", data_navigation->drone_latitude, data_navigation->drone_longitude, data_navigation->drone_height, data_navigation->drone_time, data_navigation->drone_n_sats);
+  
+  printf("----------------------------\n\n");
 
   return (0);
 }
 
-
-int     arduino_output(int * file_descriptor_tab, t_mylist ** pointer)
+int     arduino_output(int * file_descriptor_tab, t_mylist ** pointer, struct data_navigation_container * data_navigation, void * shared_memory, struct piksi_data_shared_memory * k, struct shared_double * p)
 {
   // (1) lecture des instructions recues depuis la carte arduino (parseur de donnees)
   // (2) interpretation / enregistrement des donnees
@@ -160,11 +191,11 @@ int     arduino_output(int * file_descriptor_tab, t_mylist ** pointer)
 
   char          buf;
 
-  printf("Read on exit pipe arduino\n");
+  //printf("LECTURE SUR LE FLUX DE COMMUNICATION ARDUINO\n");
 
   // RECEPTION
 
-  sleep(1);
+  //sleep(1); // Attente de fin d'ecriture sur le flux de toutes les donnees pour les paquet de taille importante : 1 seconde
 
   while (read(file_descriptor_tab[2], &buf, 1) > 0)
     {
@@ -174,30 +205,32 @@ int     arduino_output(int * file_descriptor_tab, t_mylist ** pointer)
       (*pointer) = (*pointer)->next;
 
       write(0, &buf, 1);
-
-
     }
+
+  // AFFICHAGE DES DONNES DISPONIBLES
+
+  
+  
+
+  // printf("Latitude : %.10f \nLongitude : %.10f\nHauteur : %.10f\n\n", data_navigation->drone_latitude, data_navigation->drone_longitude, data_navigation->drone_height);
+
+
   // REPONSE
 
-  fd_set writefds;
+  /* sleep(1); */
+
+  /* fd_set writefds; */
+
+  /* FD_ZERO(&writefds); */
+  /* FD_SET(file_descriptor_tab[1], &writefds); // Add input pipe arduino file_descriptor_tab[1] : flux de communication arduino ouvert en ecriture */
 
 
-  FD_ZERO(&writefds);
-  FD_SET(file_descriptor_tab[1], &writefds); // Add input pipe arduino file_descriptor_tab[1]
+  /* if (select(file_descriptor_tab[1] + 1, NULL, &writefds, NULL, NULL) == -1) { if (errno != 0) { (void)fprintf(stderr, "Select error, %s\n", strerror(errno)); } exit(1); } */
 
-
-
-  if (select(file_descriptor_tab[1] + 1, NULL, &writefds, NULL, NULL) == -1) { if (errno != 0) { (void)fprintf(stderr, "Select error, %s\n", strerror(errno)); } exit(1); }
-
-  if (FD_ISSET(file_descriptor_tab[1], &writefds))
-    {
-      printf("|||||||||||||||||||||||||||||||||||||||||Ecriture vers arduino\n");
-      write(file_descriptor_tab[1], "X#", 2);
-    }
-  else
-    {
-      printf("|||||||||||||||||||||||||||||||||||||||||| Pas possible d'ecrire sur le fd ||||||||||||||||||||||||||||||||||||||||||||||||||\n");
-    }
+  /* if (FD_ISSET(file_descriptor_tab[1], &writefds)) */
+  /*   { */
+     
+  /*   } */
 
   return (0);
 }
@@ -241,8 +274,7 @@ t_mylist *      create_loop_instruction()
   return (begin);
 }
 
-
-int     loop_process(void * shared_memory, double drone_latitude, double drone_longitude, double drone_height, t_mylist * arduino_instruction_list, t_mylist * client_instruction_list, fd_set readfds, fd_set writefds, int max_fd, struct piksi_data_shared_memory * k, struct shared_double * p, struct timeval time_out, int * file_descriptor_tab)
+int     loop_process(void * shared_memory, struct data_navigation_container * data_navigation, t_mylist * arduino_instruction_list, t_mylist * client_instruction_list, fd_set readfds, fd_set writefds, int max_fd, struct piksi_data_shared_memory * k, struct shared_double * p, struct timeval time_out, int * file_descriptor_tab)
 {
   errno = 0;
 
@@ -252,30 +284,84 @@ int     loop_process(void * shared_memory, double drone_latitude, double drone_l
 
   FD_SET(file_descriptor_tab[5], &readfds); // Add exit pipe client file_descriptor_tab[5]
 
-  time_out.tv_usec = 1000000; // Passage select toutes les 1 seconde si pas d'activite sur les fd
+  time_out.tv_usec = 2000000; // Passage select toutes les 1 seconde si pas d'activite sur les fd
 
 
 
   if (file_descriptor_tab[2] < file_descriptor_tab[5]) { max_fd = file_descriptor_tab[5] + 1; } else { max_fd = file_descriptor_tab[2] + 1; } // Preparation a l'utilisation de select()
 
-  if (select(max_fd, &readfds, NULL, NULL, /*&time_out*/ NULL) == -1) { if (errno != 0) { (void)fprintf(stderr, "Select error, %s\n", strerror(errno)); } exit(1); }
+  if (select(max_fd, &readfds, NULL, NULL, &time_out) == -1) { if (errno != 0) { (void)fprintf(stderr, "Select error, %s\n", strerror(errno)); } exit(1); }
 
  
-
-  read_global_positioning_system_data(shared_memory, k, p, &drone_latitude, &drone_longitude, &drone_height);
-
-  printf("Latitude : %.10f \nLongitude : %.10f\nHauteur : %.10f\n\n", drone_latitude, drone_longitude, drone_height);
+  read_global_positioning_system_data(shared_memory, k, p, data_navigation); // Update GPS data
 
 
+  if (FD_ISSET(file_descriptor_tab[2], &readfds)) // Condition de detection d'ecriture sur le flux de communication arduino
+    {
+      arduino_output(file_descriptor_tab, &arduino_instruction_list, data_navigation, shared_memory, k, p); // Execution des instructions d'interpretation dedies au flux de communication arduino
+    }
+  else if (FD_ISSET(file_descriptor_tab[5], &readfds))
+    {
+      client_output(file_descriptor_tab, &client_instruction_list);
+    }
 
-  if (FD_ISSET(file_descriptor_tab[2], &readfds)) { arduino_output(file_descriptor_tab, &arduino_instruction_list); }
-  else if (FD_ISSET(file_descriptor_tab[5], &readfds)) { client_output(file_descriptor_tab, &client_instruction_list); }
 
-  loop_process(shared_memory, drone_latitude, drone_longitude, drone_height, arduino_instruction_list, client_instruction_list, readfds, writefds, max_fd, k, p, time_out, file_descriptor_tab);
+  
+
+  //fd_set writefds;
+
+  FD_ZERO(&writefds);
+  FD_SET(file_descriptor_tab[1], &writefds); // Add input pipe arduino file_descriptor_tab[1] : flux de communication arduino ouvert en ecriture
+
+
+  if (select(file_descriptor_tab[1] + 1, NULL, &writefds, NULL, NULL) == -1) { if (errno != 0) { (void)fprintf(stderr, "Select error, %s\n", strerror(errno)); } exit(1); }
+
+  if (FD_ISSET(file_descriptor_tab[1], &writefds))
+    {
+
+      //char	cmd[1024] = "#XaXbXcXdXeXfXgXhXiXjXkXlXmXnXoXpXqXrXsXtXuX";
+      //char	cmd[1024] = "mxjx";
+      
+      char	cmd[1024] = "";
+
+
+      strcat(communication_command_line, "/02"); // Balise d'emission de coordonnees GPS
+
+      sprintf(string_nb, "%.10f", data_navigation->drone_latitude);
+      strcat(communication_command_line, ";");
+
+      sprintf(string_nb, "%.10f", data_navigation->drone_longitude);
+      strcat(communication_command_line, ";");
+
+      sprintf(string_nb, "%.10f", data_navigation->drone_height);
+      strcat(communication_command_line, ";");
+
+      sprintf(string_nb, "%.10f", data_navigation->drone_time);
+      strcat(communication_command_line, ";");
+
+      sprintf(string_nb, "%d", data_navigation->drone_n_sats);
+      strcat(communication_command_line, ";");
+
+
+
+
+
+      write(file_descriptor_tab[1], cmd, strlen(cmd));
+
+
+      //sleep(1); // FOR TEST STAGE
+    }
+
+
+
+
+
+
+
+  loop_process(shared_memory, data_navigation, arduino_instruction_list, client_instruction_list, readfds, writefds, max_fd, k, p, time_out, file_descriptor_tab);
 
   return (0);
 }
-
 
 int     serveur_drone_process(int * file_descriptor_tab)
   {
@@ -307,13 +393,6 @@ int     serveur_drone_process(int * file_descriptor_tab)
     fd_set        readfds, writefds;
     int           max_fd;
 
-    struct piksi_data_shared_memory *     k; // Memoire partagee
-    struct shared_double *                p; // Memoire paratgee                                                                                                                                                            
-
-    if ((k = malloc(sizeof(k))) == NULL) { write(2, "malloc_error", 12); }
-    if ((p = malloc(sizeof(p))) == NULL) { write(2, "malloc_error", 12); }
-
-
     struct timeval                        time_out;
 
     time_out.tv_usec = 0;
@@ -323,13 +402,9 @@ int     serveur_drone_process(int * file_descriptor_tab)
 
     struct termios options;
 
-    filestream = open("/dev/ttyACM0", O_RDWR | O_NOCTTY);
+    filestream = open("/dev/ttyACM0", O_RDWR | O_NOCTTY); // Ouverture du port de communication serie arduino
 
-    if (filestream == -1)
-      {
-        write(2, "open_error\n", 11);
-        return (-1);
-      }
+    if (filestream == -1) { write(2, "open_error\n", 11); return (-1); }
 
     tcgetattr(filestream, &options);
 
@@ -339,29 +414,37 @@ int     serveur_drone_process(int * file_descriptor_tab)
     tcsetattr(filestream, TCSANOW, &options);
 
 
-    file_descriptor_tab[2] = filestream;
+    file_descriptor_tab[2] = filestream; // Add file descriptor serial communication arduino in file_descriptor_tab for reading
 
     sleep(3);
 
-    write(file_descriptor_tab[1], "X#", 2); // TEST #01
+    
 
-    loop_process(shared_memory, drone_latitude, drone_longitude, drone_height, arduino_instruction_list, client_instruction_list, readfds, writefds, max_fd, k, p, time_out, file_descriptor_tab);
+
+    
+    struct piksi_data_shared_memory *     k; // Memoire partagee
+    struct shared_double *                p; // Memoire paratgee                                                                                                                                                            
+
+    if ((k = malloc(sizeof(k))) == NULL) { write(2, "malloc_error", 12); }
+    if ((p = malloc(sizeof(p))) == NULL) { write(2, "malloc_error", 12); }
+
+
+
+
+
+    struct data_navigation_container *	data_navigation = malloc(sizeof(struct data_navigation_container));
+
+    data_navigation->drone_latitude = drone_latitude;
+    data_navigation->drone_longitude = drone_longitude;
+    data_navigation->drone_height = drone_height;
+
+    loop_process(shared_memory, data_navigation, arduino_instruction_list, client_instruction_list, readfds, writefds, max_fd, k, p, time_out, file_descriptor_tab);
 
     return (0);
 }
 
 int	python_communication_serial_process(int * file_descriptor_tab)
 {
-  /* close_file_descriptor(file_descriptor_tab, file_descriptor_tab[1]); // Fermeture du fd */
-
-  /* close_file_descriptor(file_descriptor_tab, file_descriptor_tab[2]); // Fermeture du fd */
-
-  /* close_file_descriptor(file_descriptor_tab, file_descriptor_tab[4]); // Fermeture du fd */
-  /* close_file_descriptor(file_descriptor_tab, file_descriptor_tab[5]); // Fermeture du fd */
-
-  /* close_file_descriptor(file_descriptor_tab, file_descriptor_tab[6]); // Fermeture du fd */
-  /* close_file_descriptor(file_descriptor_tab, file_descriptor_tab[7]); // Fermeture du fd */
-
   char	* communication_command_line = malloc(30 * sizeof(char));
   char	* string_nb = malloc(10 * sizeof(char));
   
@@ -376,7 +459,7 @@ int	python_communication_serial_process(int * file_descriptor_tab)
   sprintf(string_nb, "%d", file_descriptor_tab[3]);
   strcat(communication_command_line, string_nb);
  
-  sleep(2);
+  sleep(2); // Init all processus waiting : do not remove !
 
   execl("/bin/sh", "sh", "-c", communication_command_line);
 
@@ -385,8 +468,6 @@ int	python_communication_serial_process(int * file_descriptor_tab)
 
 int	gps_receiver_process(int * file_descriptor_tab)
 {
-  /* close_file_descriptor(file_descriptor_tab, 0); // Fermeture de tout les fd ouvert dans le processus */
-
   //execl("/bin/sh", "gps_communication"); 
 
   return (EXIT_SUCCESS);

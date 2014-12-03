@@ -25,6 +25,17 @@ struct piksi_data_shared_memory
   int                   height_sign;
   int                   height_whole_part;
   char                  height_decimal_part[10];
+
+  //struct shared_double	time; // Time [second]
+
+  int			time_sign;
+  int			time_whole_part;
+  char			time_decimal_part[10];
+
+  //struct shared_double	n_sats;
+
+  int			n_sats;
+
 };
 
 #endif
